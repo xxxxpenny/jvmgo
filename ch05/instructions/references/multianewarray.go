@@ -1,0 +1,50 @@
+package references
+
+import (
+	"jvmgo/ch05/instructions/base"
+	"jvmgo/ch05/rtda"
+	"jvmgo/ch05/rtda/heap"
+)
+
+func popAndCheckCounts(stack *rtda.OperandStack, dimension int) []int32 {
+	counts := make([]int32, dimension)
+	for i := dimension - 1; i >= 0; i-- {
+		counts[i] = stack.PopInt()
+		if counts[i] < 0 {
+			panic("java.lang.NegativeArraySizeException")
+		}
+	}
+	return counts
+}
+
+func newMultiDimensionArray(counts []int32, arrClass *heap.Class) *heap.Object {
+	count := uint(counts[0])
+	arr := arrClass.NewArray(count)
+	if len(counts) > 1 {
+		refs := arr.Refs()
+		for i := range refs {
+			refs[i] = newMultiDimensionArray(counts[1:], arrClass.ComponentClass())
+		}
+	}
+	return arr
+}
+
+type MULTI_ANEW_ARRAY struct {
+	index     uint16
+	dimension uint8
+}
+
+func (self *MULTI_ANEW_ARRAY) FetchOperands(reader *base.BytecodeReader) {
+	self.index = reader.ReadUint16()
+	self.dimension = reader.ReadUint8()
+}
+
+func (self *MULTI_ANEW_ARRAY) Execute(frame *rtda.Frame) {
+	cp := frame.Method().Class().ConstantPool()
+	classRef := cp.GetConstant(uint(self.index)).(*heap.ClassRef)
+	arrClass := classRef.ResolvedClass()
+	stack := frame.OperandStack()
+	counts := popAndCheckCounts(stack, int(self.dimension))
+	arr := newMultiDimensionArray(counts, arrClass)
+	stack.PushRef(arr)
+}
